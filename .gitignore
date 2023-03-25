@@ -1,3 +1,7 @@
+node_modules
+user_pictures
+user_pictures/*
+
 # Logs
 logs
 *.log
