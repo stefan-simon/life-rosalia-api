@@ -35,6 +35,11 @@ const upload = multer({ storage: storage });
 
 app.use(express.json());
 
+// homepage
+app.get('/', (req, res) => {
+  res.send('Welcome to the Bird Sightings API');
+});
+
 // get all species
 app.get('/api/sightings', async (req, res) => {
   try {
