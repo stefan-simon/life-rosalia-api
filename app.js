@@ -70,21 +70,6 @@ app.get('/api/image/:imageName', (req, res) => {
   });
 });
 
-// get image by name
-app.get('/api/image/:imageName', (req, res) => {
-  const imageName = req.params.imageName;
-  const imagePath = path.join(IMAGES_DIR, imageName);
-  fs.readFile(imagePath, (err, data) => {
-    if (err) {
-      console.error(err);
-      res.status(404).json({ error: 'Image not found.' });
-    } else {
-      res.writeHead(200, { 'Content-Type': 'image/jpeg' });
-      res.end(data);
-    }
-  });
-});
-
 // insert a new sighting record and upload up to 3 files
 app.post('/api/sightings', upload.array('pictures', 3), async (req, res) => {
   const { species, sighting_date, notes, longitude, latitude, created_by } = req.body;
