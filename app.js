@@ -33,6 +33,8 @@ const storage = multer.diskStorage({
 });
 const upload = multer({ storage: storage });
 
+const mime = require('mime');
+
 app.use(express.json());
 
 // homepage
@@ -49,6 +51,38 @@ app.get('/api/sightings', async (req, res) => {
     console.error(error);
     res.status(500).json({ error: 'An error occurred while fetching species.' });
   }
+});
+
+// get image by name
+app.get('/api/image/:imageName', (req, res) => {
+  const imageName = req.params.imageName;
+  const imagePath = path.join(IMAGES_DIR, imageName);
+  fs.readFile(imagePath, (err, data) => {
+    if (err) {
+      console.error(err);
+      res.status(404).json({ error: 'Image not found.' });
+    } else {
+      const ext = path.extname(imageName);
+      const mimeType = mime.getType(ext);
+      res.writeHead(200, { 'Content-Type': mimeType });
+      res.end(data);
+    }
+  });
+});
+
+// get image by name
+app.get('/api/image/:imageName', (req, res) => {
+  const imageName = req.params.imageName;
+  const imagePath = path.join(IMAGES_DIR, imageName);
+  fs.readFile(imagePath, (err, data) => {
+    if (err) {
+      console.error(err);
+      res.status(404).json({ error: 'Image not found.' });
+    } else {
+      res.writeHead(200, { 'Content-Type': 'image/jpeg' });
+      res.end(data);
+    }
+  });
 });
 
 // insert a new sighting record and upload up to 3 files
@@ -80,6 +114,8 @@ app.post('/api/sightings', upload.array('pictures', 3), async (req, res) => {
     res.status(500).json({ error: 'An error occurred while creating sighting.' });
   }
 });
+
+
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
