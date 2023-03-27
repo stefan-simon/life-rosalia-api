@@ -37,6 +37,14 @@ const mime = require('mime');
 
 app.use(express.json());
 
+const cors = require('cors');
+app.use(cors({
+  origin: 'http://localhost:3000',
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'],
+  allowedHeaders: ['Content-Type', 'Authorization']
+}));
+
+
 // homepage
 app.get('/', (req, res) => {
   res.send('Welcome to the Bird Sightings API');
@@ -100,6 +108,24 @@ app.post('/api/sightings', upload.array('pictures', 3), async (req, res) => {
   }
 });
 
+// set verified status of a sighting
+app.patch('/api/sightings/:id/verified', async (req, res) => {
+  const id = req.params.id;
+  const verified = req.body.verified;
+
+  try {
+    // update the sighting in the database
+    const result = await pool.query('UPDATE sightings SET verified=$1 WHERE id=$2 RETURNING *', [verified, id]);
+    if (result.rowCount === 0) {
+      res.status(404).json({ error: 'Sighting not found.' });
+    } else {
+      res.status(200).json(result.rows[0]);
+    }
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: 'An error occurred while updating sighting.' });
+  }
+});
 
 
 const PORT = process.env.PORT || 3000;
