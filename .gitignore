@@ -1,6 +1,10 @@
 node_modules
 user_pictures
+.env
+*.pem
 user_pictures/*
+user_pictures/*.*
+
 
 # Logs
 logs
