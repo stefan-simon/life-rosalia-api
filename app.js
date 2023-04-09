@@ -64,7 +64,6 @@ function authorizeAdmin(req, res, next) {
   next();
 }
 
-
 // homepage
 app.get('/', (req, res) => {
   res.send('Welcome to the Bird Sightings API');
@@ -179,13 +178,20 @@ app.get('/api/users', authenticate, authorizeAdmin, async (req, res) => {
 });
 
 app.post('/api/register', async (req, res) => {
+  const { email, name, password } = req.body;
   try {
-    await User.registerUser(req.body.email, req.body.name, req.body.password);
-    res.status(201).send({ message: "User registered successfully" });
+    const user = await User.findUserByUsername(email);
+    if (user) {
+      res.status(409).send({ error: "Adresa de email este deja folosita." });
+    } else {
+      await User.registerUser(email, name, password);
+      res.status(201).send({ message: "inregistrare cu success" });
+    }
   } catch (err) {
     res.status(400).send({ error: err.message });
   }
 });
+
 
 app.post('/api/login', async (req, res) => {
   try {
