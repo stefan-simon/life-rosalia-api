@@ -72,7 +72,7 @@ app.get('/', (req, res) => {
 // get all species
 app.get('/api/sightings', async (req, res) => {
   try {
-    const result = await pool.query('SELECT * FROM sightings');
+    const result = await pool.query('SELECT * FROM v_sightings');
     res.status(200).json(result.rows);
   } catch (error) {
     console.error(error);
