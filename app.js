@@ -199,7 +199,7 @@ app.post('/api/login', async (req, res) => {
     if (!user || !(await User.comparePassword(req.body.password, user.password))) {
       return res.status(401).send({ error: "Invalid username or password" });
     }
-    const token = jwt.sign({ id: user.user_code, name: user.name, role: user.role }, process.env.JWT_SECRET, { expiresIn: "1h" });
+    const token = jwt.sign({ id: user.user_code, name: user.name, role: user.role }, process.env.JWT_SECRET, { expiresIn: "1w" });
     res.send({ token });
   } catch (err) {
     res.status(500).send({ error: err.message });
@@ -211,7 +211,7 @@ app.post('/api/renew-token', async (req, res) => {
     const token = req.headers.authorization.split(' ')[1];
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
     const user = await User.findUserById(decoded.id);
-    const newToken = jwt.sign({ id: user.id, name: user.name, role: user.role }, process.env.JWT_SECRET, { expiresIn: "1h" });
+    const newToken = jwt.sign({ id: user.id, name: user.name, role: user.role }, process.env.JWT_SECRET, { expiresIn: "1w" });
     res.send({ token: newToken });
   } catch (err) {
     res.status(401).send({ error: "Invalid or expired token" });
