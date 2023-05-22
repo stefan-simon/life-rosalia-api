@@ -31,16 +31,10 @@ const upload = multer({ storage: storage });
 
 const mime = require('mime');
 
-// create reusable transporter object using the default SMTP transport
-const transporter = nodemailer.createTransport({
-  host: 'mail.liferosalia.ro',
-  port: 465,
-  secure: true, // use SSL
-  auth: {
-    user: 'aplicatie@liferosalia.ro',
-    pass: 'SalvamPaduri#982457'
-  }
-});
+// setup the sendgrid mailer
+const sgMail = require('@sendgrid/mail')
+sgMail.setApiKey(process.env.SENDGRID_API_KEY)
+
 
 app.use(express.json());
 
@@ -50,6 +44,30 @@ app.use(cors({
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'],
   allowedHeaders: ['Content-Type', 'Authorization']
 }));
+
+// Middleware function to extract user_code from JWT token
+function decode_jwt(req, res, next) {
+  const authHeader = req.headers["authorization"];
+  const token = authHeader && authHeader.split(" ")[1];
+
+  let user_code = "";
+  let role = "";
+
+  if (token) {
+    jwt.verify(token, process.env.JWT_SECRET, (err, decoded) => {
+      if (!err) {
+        user_code = decoded.user_code;
+        role = decoded.role;
+      }
+    });
+    req.user_code = decoded.user_code;
+    req.role = decoded.role;
+  }
+
+  req.user_code = user_code;
+  req.role = role;
+  next();
+}
 
 // Middleware function to verify JWT token
 function authenticate(req, res, next) {
@@ -68,6 +86,13 @@ function authenticate(req, res, next) {
     req.role = decoded.role;
     next();
   });
+}
+
+function authorizeValidator(req, res, next) {
+  if (req.role !== "validator" && req.role !== "admin") {
+    return res.status(403).send({ error: "Access denied, you must be an admin to access this route" });
+  }
+  next();
 }
 
 function authorizeAdmin(req, res, next) {
@@ -111,7 +136,7 @@ app.get('/api/sightings', async (req, res) => {
 });
 
 // get all sightings
-app.get('/api/all-sightings', authenticate, authorizeAdmin, async (req, res) => {
+app.get('/api/all-sightings', authenticate, authorizeValidator, async (req, res) => {
   try {
     const result = await pool.query('SELECT * FROM v_sightings ORDER BY sighting_date DESC');
     res.status(200).json(result.rows);
@@ -172,7 +197,7 @@ app.post('/api/sightings', authenticate, upload.array('pictures', 3), async (req
 });
 
 // set verified status of a sighting
-app.patch('/api/sightings/:id', authenticate, authorizeAdmin, async (req, res) => {
+app.patch('/api/sightings/:id', authenticate, authorizeValidator, async (req, res) => {
   const id = req.params.id;
   const verified = req.body.verified;
 
@@ -191,7 +216,7 @@ app.patch('/api/sightings/:id', authenticate, authorizeAdmin, async (req, res) =
 });
 
 // delete a sighting by ID
-app.delete('/api/sightings/:id', authenticate, authorizeAdmin, async (req, res) => {
+app.delete('/api/sightings/:id', authenticate, authorizeValidator, async (req, res) => {
   const id = req.params.id;
 
   try {
@@ -248,6 +273,24 @@ app.post('/api/users/:userId/activate', authenticate, authorizeAdmin, async (req
   }
 });
 
+// set role to a user
+app.post('/api/users/:userId/role', authenticate, authorizeAdmin, async (req, res) => {
+  const { userId } = req.params;
+  const { role } = req.body;
+
+  try {
+    const result = await pool.query('UPDATE users SET role = $1 WHERE id = $2', [role, userId]);
+    if (result.rowCount === 0) {
+      res.status(404).json({ error: 'Utilizatorul nu a fost gasit' });
+    } else {
+      res.status(200).json(result.rows[0]);
+    }
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: 'Eroare la actualizarea rolului' });
+  }
+});
+
 
 app.post('/api/register', async (req, res) => {
   const { email, name, password } = req.body;
@@ -255,6 +298,8 @@ app.post('/api/register', async (req, res) => {
     const user = await User.findUserByUsername(email);
     if (user) {
       res.status(409).send({ error: "Adresa de email este deja folosita." });
+    } if (name.length < 3) {
+      res.status(409).send({ error: "Numele nu poate avea mai putin de 3 litere." });
     } else {
       await User.registerUser(email, name, password);
       res.status(201).send({ message: "inregistrare cu success" });
@@ -267,8 +312,8 @@ app.post('/api/register', async (req, res) => {
 app.post('/api/login', async (req, res) => {
   try {
     const user = await User.findUserByUsername(req.body.username);
-    if (!user || !(await User.comparePassword(req.body.password, user.password))) {
-      return res.status(401).send({ error: "Invalid username or password" });
+    if (!user || !user.active || !(await User.comparePassword(req.body.password, user.password))) {
+      return res.status(401).send({ error: "Eroare la logare. Utilizator inexistent sau inactive sau parola gresita" });
     }
     const token = jwt.sign({ id: user.user_code, name: user.name, role: user.role }, process.env.JWT_SECRET, { expiresIn: "1w" });
     res.send({ token });
@@ -320,24 +365,26 @@ app.post('/api/reset-password', async (req, res) => {
 
   // setup email data
   let mailOptions = {
-    from: 'aplicatie@liferosalia.ro',
     to: email,
+    from: 'aplicatie@liferosalia.ro',
     subject: 'Resetare parola Aplicatie LifeRosalia',
     html: `Va rugam sa accesati <a href="https://aplicatie.liferosalia.ro/set-password?token=${token}">acest link</a> pentru resetarea parolei.`,
+    text: `Va rugam sa accesati acest link pentru resetarea parolei: https://aplicatie.liferosalia.ro/set-password?token=${token}`,
   };
 
-  // Send the email
-  transporter.sendMail(mailOptions, (error) => {
-    if (error) {
+  // Send the email using sgMail. sgMail will replace the transporter
+  sgMail
+    .send(mailOptions)
+    .then(() => {
+      // Return a success response
+      return res.status(200).json({
+        message: 'Instructiunile pentru resetarea parolei a fost trimis pe adresa de email.',
+      });
+    })
+    .catch((error) => {
       console.error(error);
       return res.status(500).json({ error: 'Eroare la trimiterea emailului' });
-    }
-
-    // Return a success response
-    return res.status(200).json({
-      message: 'Instructiunile pentru resetarea parolei a fost trimis pe adresa de email.',
     });
-  });
 });
 
 app.post('/api/set-password', async (req, res) => {
